@@ -1,4 +1,3 @@
-```lua
 local aca = game:GetService("Players")
 local awa = aca.LocalPlayer
 local aba = workspace:FindFirstChild("Cars")
@@ -27,5 +26,3 @@ task.spawn(function()
         task.wait(0.1)
     end
 end)
-```
-
