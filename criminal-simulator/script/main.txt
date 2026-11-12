@@ -1,0 +1,448 @@
+--[[
+To Change:
+- Performance (degrades over time when active)
+- Fix Icons
+- Add Different Font Options (current is ugly)
+- Add more NPCs
+- whatever else i think is useful
+]]
+
+
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+
+
+if not isfolder("MatchaConfigs") then
+    makefolder("MatchaConfigs")
+end
+local CONFIG_PATH = "criminal-simulator\\aca-esp.json"
+
+
+local activeDrawings = {}
+local lootCacheData = {} 
+local favoriteItems = {} 
+
+
+UI.AddTab("ESP & Config", function(tab)
+    local lootSec = tab:Section("Loot ESP", "Left", {"Filters", "Favorites"}, 400)
+    
+    if lootSec.page == 0 then
+        lootSec:Toggle("loot_on", "Enable Loot ESP", false)
+        local lootKb = lootSec:Keybind("loot_kb", 0, "toggle")
+        lootKb:AddToHotkey("Loot ESP", "loot_on")
+        
+        lootSec:Toggle("loot_text", "Show Item Text & Value", true)
+        lootSec:Toggle("loot_dot", "Show Dot Marker", true)
+        lootSec:SliderInt("loot_dist", "Max Distance", 100, 5000, 1500)
+        
+        lootSec:Text("Value Tiers:")
+        lootSec:Toggle("tier_white", "< 200 (White)", true)
+        lootSec:Toggle("tier_green", "201 - 350 (Green)", true)
+        lootSec:Toggle("tier_blue", "351 - 500 (Blue)", true)
+        lootSec:Toggle("tier_purple", "501 - 850 (Purple)", true)
+        lootSec:Toggle("tier_yellow", "851 - 1000 (Yellow)", true)
+        lootSec:Toggle("tier_red", "> 1000 (Red)", true)
+        
+    elseif lootSec.page == 1 then
+        lootSec:Text("Dynamic Item Favorites")
+        lootSec:Tip("Enable items to highlight them with a favorite icon.")
+    end
+
+
+
+    local policeSec = tab:Section("Police ESP", "Right")
+    policeSec:Toggle("police_master", "Master Toggle: Police", false)
+    policeSec:Toggle("police_box", "Box ESP", true)
+    policeSec:ColorPicker("police_box_col", 0, 0.4, 1, 1)
+    policeSec:Toggle("police_name", "Name & Status", true)
+    policeSec:Toggle("police_holding", "Currently Holding", true)
+    policeSec:Toggle("police_skeleton", "Skeleton ESP", false)
+    policeSec:SliderInt("police_dist", "Distance", 100, 5000, 2000)
+
+
+
+    local guardsSec = tab:Section("Guards ESP", "Right")
+    guardsSec:Toggle("guards_master", "Master Toggle: Guards", false)
+    guardsSec:Toggle("guards_box", "Box ESP", true)
+    guardsSec:ColorPicker("guards_box_col", 0, 1, 0, 1)
+    guardsSec:Toggle("guards_name", "Name & Status", true)
+    guardsSec:Toggle("guards_holding", "Currently Holding", true)
+    guardsSec:Toggle("guards_skeleton", "Skeleton ESP", false)
+    guardsSec:SliderInt("guards_dist", "Distance", 100, 5000, 2000)
+
+
+
+    local npcSec = tab:Section("Resident ESP", "Right")
+    npcSec:Toggle("npc_master", "Master Toggle: Residents", false)
+    npcSec:Toggle("npc_box", "Box ESP", true)
+    npcSec:ColorPicker("npc_box_col", 1, 1, 1, 1)
+    npcSec:Toggle("npc_name", "Name & Status", true)
+    npcSec:Toggle("npc_holding", "Currently Holding", true)
+    npcSec:Toggle("npc_skeleton", "Skeleton ESP", false)
+    npcSec:SliderInt("npc_dist", "Distance", 100, 5000, 2000)
+    
+    local configSec = tab:Section("Configuration", "Left")
+    configSec:Button("Save Config Now", function()
+        saveConfiguration()
+    end)
+    configSec:Button("Load Config Now", function()
+        loadConfiguration()
+    end)
+end)
+
+
+
+
+
+function saveConfiguration()
+    local configData = {
+        Toggles = {},
+        Sliders = {},
+        Colors = {},
+        Favorites = favoriteItems
+    }
+    
+    local toggleIDs = {
+        "loot_on", "loot_text", "loot_dot", "tier_white", "tier_green", "tier_blue", "tier_purple", "tier_yellow", "tier_red",
+        "police_master", "police_box", "police_name", "police_holding", "police_skeleton",
+        "guards_master", "guards_box", "guards_name", "guards_holding", "guards_skeleton",
+        "npc_master", "npc_box", "npc_name", "npc_holding", "npc_skeleton"
+    }
+    
+    for _, id in ipairs(toggleIDs) do
+        local success, val = pcall(function() return UI.GetValue(id) end)
+        if success and val ~= nil then
+            configData.Toggles[id] = val
+        end
+    end
+    
+    local sliderIDs = {"loot_dist", "police_dist", "guards_dist", "npc_dist"}
+    for _, id in ipairs(sliderIDs) do
+        local success, val = pcall(function() return UI.GetValue(id) end)
+        if success and val ~= nil then
+            configData.Sliders[id] = val
+        end
+    end
+    
+    local encoded = game:GetService("HttpService"):JSONEncode(configData)
+    writefile(CONFIG_PATH, encoded)
+    print("[Matcha ESP]: Configuration automatically saved.")
+end
+
+function loadConfiguration()
+    if isfile(CONFIG_PATH) then
+        local raw = readfile(CONFIG_PATH)
+        local success, decoded = pcall(function()
+            return game:GetService("HttpService"):JSONDecode(raw)
+        end)
+        
+        if success and decoded then
+            if decoded.Toggles then
+                for id, val in pairs(decoded.Toggles) do
+                    pcall(function() UI.SetValue(id, val) end)
+                end
+            end
+            if decoded.Sliders then
+                for id, val in pairs(decoded.Sliders) do
+                    pcall(function() UI.SetValue(id, val) end)
+                end
+            end
+            if decoded.Favorites then
+                favoriteItems = decoded.Favorites
+            end
+            print("[Matcha ESP]: Configuration loaded successfully.")
+        end
+    end
+end
+
+loadConfiguration()
+
+task.spawn(function()
+    while true do
+        task.wait(60)
+        pcall(saveConfiguration)
+    end
+end)
+
+
+
+
+
+local function getHighestAttributeValue(model)
+    local highest = 0
+    for _, attrName in ipairs(model:GetAttributes()) do
+        if attrName == "Value" or attrName:match("Value") then
+            local val = model:GetAttribute(attrName)
+            if type(val) == "number" and val > highest then
+                highest = val
+            end
+        end
+    end
+    for _, child in ipairs(model:GetChildren()) do
+        if child:IsA("ValueBase") and child.Value > highest then
+            highest = child.Value
+        end
+    end
+    return highest
+end
+
+local function getValueColor(val)
+    if val < 200 then
+        return Color3.fromRGB(255, 255, 255), "tier_white"
+    elseif val <= 350 then
+        return Color3.fromRGB(0, 255, 0), "tier_green"
+    elseif val <= 500 then
+        return Color3.fromRGB(0, 150, 255), "tier_blue"
+    elseif val <= 850 then
+        return Color3.fromRGB(170, 0, 255), "tier_purple"
+    elseif val <= 1000 then
+        return Color3.fromRGB(255, 255, 0), "tier_yellow"
+    else
+        return Color3.fromRGB(255, 0, 0), "tier_red"
+    end
+end
+
+local function validateNpcTool(model)
+    local toolName = "None"
+    local toolFound = false
+    
+    for _, child in ipairs(model:GetChildren()) do
+        if child:IsA("Tool") or (child:IsA("Model") and (child.Name:lower():find("pistol") or child.Name:lower():find("rifle"))) then
+            toolFound = true
+            toolName = child.Name
+            local hasMag = child:FindFirstChild("Magazine") ~= nil
+            local hasHandle = child:FindFirstChild("Handle") ~= nil
+            
+            if not hasMag or not hasHandle then
+                warn(string.format("Could not find %s in %s.", not hasMag and "Magazine" or "Handle", child.Name))
+            end
+            break
+        end
+    end
+    return toolFound, toolName
+end
+
+
+
+
+local policeIconData = ""
+local guardIconData = ""
+local residentIconData = ""
+local favIconData = ""
+
+task.spawn(function()
+    pcall(function() policeIconData = httpget("https://raw.githubusercontent.com/citejonah/latte/main/criminal-simulator/data/icons/police.svg") end)
+    pcall(function() guardIconData = httpget("https://raw.githubusercontent.com/citejonah/latte/main/criminal-simulator/data/icons/guard.svg") end)
+    pcall(function() residentIconData = httpget("https://raw.githubusercontent.com/citejonah/latte/main/criminal-simulator/data/icons/resident.svg") end)
+    pcall(function() favIconData = httpget("https://raw.githubusercontent.com/citejonah/latte/main/criminal-simulator/data/icons/fav.svg") end)
+end)
+
+
+
+
+
+RunService.RenderStepped:Connect(function(deltaTime)
+    lootCacheData = {}
+    local activeInstanceTracker = {}
+
+
+    local lootFolder = Workspace:FindFirstChild("Loot")
+    if lootFolder and UI.GetValue("loot_on") then
+        local maxDist = UI.GetValue("loot_dist") or 1500
+        
+        for _, item in ipairs(lootFolder:GetChildren()) do
+            if item:IsA("Model") then
+                local val = getHighestAttributeValue(item)
+                local col, tierToggleId = getValueColor(val)
+                
+                local tierAllowed = true
+                pcall(function() tierAllowed = UI.GetValue(tierToggleId) end)
+                
+                local itemName = item.Name
+                if not lootCacheData[itemName] then
+                    lootCacheData[itemName] = { count = 0, maxValue = val }
+                end
+                lootCacheData[itemName].count = lootCacheData[itemName].count + 1
+
+                local primaryPart = item.PrimaryPart or item:FindFirstChild("HumanoidRootPart") or item:FindFirstChildWhichIsA("BasePart")
+                if primaryPart and tierAllowed then
+                    local pos, onScreen = WorldToScreen(primaryPart.Position)
+                    local dist = (Camera.CFrame.Position - primaryPart.Position).Magnitude
+                    
+                    if onScreen and dist <= maxDist then
+                        activeInstanceTracker[item] = true
+                        if not activeDrawings[item] then
+                            activeDrawings[item] = {
+                                Dot = Drawing.new("Circle"),
+                                Text = Drawing.new("Text"),
+                                FavIcon = Drawing.new("Image")
+                            }
+                            activeDrawings[item].Dot.Radius = 4
+                            activeDrawings[item].Dot.Filled = true
+                            activeDrawings[item].Text.Size = 13
+                            activeDrawings[item].Text.Center = true
+                            activeDrawings[item].Text.Outline = true
+                            if favIconData ~= "" then
+                                activeDrawings[item].FavIcon.Data = favIconData
+                                activeDrawings[item].FavIcon.Size = Vector2.new(16, 16)
+                            end
+                        end
+                        
+                        local visuals = activeDrawings[item]
+                        if UI.GetValue("loot_dot") then
+                            visuals.Dot.Position = pos
+                            visuals.Dot.Color = col
+                            visuals.Dot.Visible = true
+                        else
+                            visuals.Dot.Visible = false
+                        end
+                        
+                        if UI.GetValue("loot_text") then
+                            visuals.Text.Text = string.format("%s [%d]", itemName, val)
+                            visuals.Text.Position = Vector2.new(pos.X, pos.Y - 18)
+                            visuals.Text.Color = col
+                            visuals.Text.Visible = true
+                            
+                            if favoriteItems[itemName] and favIconData ~= "" then
+                                visuals.FavIcon.Position = Vector2.new(pos.X - 35, pos.Y - 22)
+                                visuals.FavIcon.Visible = true
+                            else
+                                visuals.FavIcon.Visible = false
+                            end
+                        else
+                            visuals.Text.Visible = false
+                            visuals.FavIcon.Visible = false
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+
+
+
+
+
+    local categories = {
+        { folder = Workspace:FindFirstChild("Police"), masterId = "police_master", boxId = "police_box", nameId = "police_name", holdId = "police_holding", distId = "police_dist", icon = policeIconData },
+        { folder = Workspace:FindFirstChild("Guards"), masterId = "guards_master", boxId = "guards_box", nameId = "guards_name", holdId = "guards_holding", distId = "guards_dist", icon = guardIconData },
+        { folder = Workspace:FindFirstChild("Npcs"), masterId = "npc_master", boxId = "npc_box", nameId = "npc_name", holdId = "npc_holding", distId = "npc_dist", icon = residentIconData }
+    }
+
+    for _, cat in ipairs(categories) do
+        local masterEnabled = false
+        pcall(function() masterEnabled = UI.GetValue(cat.masterId) end)
+        
+        if cat.folder and masterEnabled then
+            local maxDist = UI.GetValue(cat.distId) or 2000
+            
+            for _, npc in ipairs(cat.folder:GetChildren()) do
+                if npc:IsA("Model") then
+                    local hrp = npc:FindFirstChild("HumanoidRootPart") or npc.PrimaryPart
+                    local humanoid = npc:FindFirstChildOfClass("Humanoid")
+                    
+                    if hrp and humanoid and humanoid.Health > 0 then
+                        local pos, onScreen = WorldToScreen(hrp.Position)
+                        local dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+                        
+                        if onScreen and dist <= maxDist then
+                            activeInstanceTracker[npc] = true
+                            if not activeDrawings[npc] then
+                                activeDrawings[npc] = {
+                                    Box = Drawing.new("Square"),
+                                    NameText = Drawing.new("Text"),
+                                    InfoText = Drawing.new("Text"),
+                                    IconImage = Drawing.new("Image")
+                                }
+                                activeDrawings[npc].NameText.Size = 13
+                                activeDrawings[npc].NameText.Center = true
+                                activeDrawings[npc].NameText.Outline = true
+                                activeDrawings[npc].InfoText.Size = 12
+                                activeDrawings[npc].InfoText.Center = true
+                                activeDrawings[npc].InfoText.Outline = true
+                            end
+                            
+                            local vis = activeDrawings[npc]
+                            local isKnown = (npc.Name == "Officer" or npc.Name == "Chief" or npc.Name == "Guard" or npc.Name == "Resident")
+                            
+                            if not isKnown then
+                                warn("[Matcha Debug]: Unknown model encountered: " .. npc.Name)
+                            end
+                            
+                            local hasTool, toolName = validateNpcTool(npc)
+                            
+
+                            if UI.GetValue(cat.boxId) then
+                                local height = (Camera.ViewportSize.Y / (pos.Y * 2)) * 5
+                                local width = height * 0.5
+                                vis.Box.Size = Vector2.new(width, height)
+                                vis.Box.Position = Vector2.new(pos.X - width/2, pos.Y - height/2)
+                                vis.Box.Thickness = 1.5
+                                vis.Box.Filled = false
+                                vis.Box.Color = Color3.fromRGB(255, 255, 255)
+                                vis.Box.Visible = true
+                            else
+                                vis.Box.Visible = false
+                            end
+                            
+
+                            if UI.GetValue(cat.nameId) then
+                                local labelText = isKnown and npc.Name or "? [Unknown]"
+                                vis.NameText.Text = string.format("%s (%d HP)", labelText, math.floor(humanoid.Health))
+                                vis.NameText.Position = Vector2.new(pos.X, pos.Y - 35)
+                                vis.NameText.Visible = true
+                                
+                                if cat.icon ~= "" then
+                                    vis.IconImage.Data = cat.icon
+                                    vis.IconImage.Size = Vector2.new(16, 16)
+                                    vis.IconImage.Position = Vector2.new(pos.X - 55, pos.Y - 35)
+                                    vis.IconImage.Visible = true
+                                end
+                            else
+                                vis.NameText.Visible = false
+                                if cat.icon ~= "" then
+                                    vis.IconImage.Position = Vector2.new(pos.X - 8, pos.Y - 25)
+                                    vis.IconImage.Visible = true
+                                end
+                            end
+                            
+
+                            if UI.GetValue(cat.holdId) then
+                                vis.InfoText.Text = "Holding: " .. (hasTool and toolName or "None")
+                                vis.InfoText.Position = Vector2.new(pos.X, pos.Y + 15)
+                                vis.InfoText.Visible = true
+                            else
+                                vis.InfoText.Visible = false
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+
+
+
+
+
+
+    for instance, drawings in pairs(activeDrawings) do
+        if not activeInstanceTracker[instance] then
+            if drawings.Dot then drawings.Dot:Remove() end
+            if drawings.Text then drawings.Text:Remove() end
+            if drawings.FavIcon then drawings.FavIcon:Remove() end
+            if drawings.Box then drawings.Box:Remove() end
+            if drawings.NameText then drawings.NameText:Remove() end
+            if drawings.InfoText then drawings.InfoText:Remove() end
+            if drawings.IconImage then drawings.IconImage:Remove() end
+            activeDrawings[instance] = nil
+        end
+    end
+end)
